@@ -2,7 +2,6 @@ import numpy as np
 import time
 import logging
 
-# Set up logging for demonstration purposes
 logging.basicConfig(level=logging.INFO)
 
 
@@ -98,15 +97,3 @@ def stress_test(kubernetes_deployment, namespace="default", duration=30):
     return (
         f"Stress test on deployment '{kubernetes_deployment}' completed successfully."
     )
-
-
-# Example usage for testing the module
-if __name__ == "__main__":
-    # Simulate a 10-second workload with a base intensity of 5 requests/sec during peak traffic.
-    simulate_workload(duration=10, intensity=5, pattern="peak")
-
-    # Simulate a stress test on a deployment named 'your-deployment' for 15 seconds.
-    result = stress_test(
-        kubernetes_deployment="your-deployment", namespace="default", duration=15
-    )
-    logging.info(result)

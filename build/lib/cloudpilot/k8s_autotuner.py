@@ -84,11 +84,3 @@ def tune_and_monitor(deployment_name, namespace="default"):
         return f"Tuning complete. Anomaly detected and healed: {heal_result}"
     else:
         return "Tuning complete. No anomalies detected."
-
-
-if __name__ == "__main__":
-    # Example usage: replace 'your-deployment' with your actual deployment name.
-    deployment_name = "your-deployment"
-    namespace = "default"
-    result = tune_and_monitor(deployment_name, namespace)
-    print(result)

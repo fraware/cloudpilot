@@ -4,7 +4,7 @@ setup(
     name="cloudpilot",
     version="1.0.0",
     description="CloudPilot - AI-Driven Infrastructure Optimization",
-    author="Your Name",
+    author="Mateo Petel",
     packages=find_packages(),
     install_requires=[
         "boto3",

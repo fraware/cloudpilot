@@ -61,14 +61,3 @@ def recommend_scaling(cpu_util, mem_util, request_rate, network_latency, user_de
     scaler = RLScaler()  # Loads the TorchScript model or uses dummy.
     action = scaler.get_action(state)
     return f"RL-based Recommendation: {action}"
-
-
-# For testing purposes, you can uncomment the block below:
-# if __name__ == "__main__":
-#     # Example state values.
-#     cpu_util = 75.0        # e.g., 75% CPU usage.
-#     mem_util = 65.0        # e.g., 65% memory usage.
-#     request_rate = 0.8     # e.g., normalized value for high load.
-#     network_latency = 120  # e.g., 120ms average latency.
-#     user_demand = 0.9      # e.g., high user demand.
-#     print(recommend_scaling(cpu_util, mem_util, request_rate, network_latency, user_demand))

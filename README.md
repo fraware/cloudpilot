@@ -2,6 +2,10 @@
 
 CloudPilot is an AI-driven infrastructure optimizer designed to continuously learn and adapt, helping organizations reduce cloud costs while maintaining optimal performance, reliability, and scalability. It combines advanced machine learning techniques with cloud and Kubernetes management tools to automate scaling, cost optimization, anomaly detection, and load testing.
 
+<p align="center" width="100%">
+<img src="assets/cloudpilot.png" width="600">
+</p>
+
 ## Key Features
 
 - **Intelligent Scaling:**  

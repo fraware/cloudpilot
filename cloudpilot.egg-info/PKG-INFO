@@ -1,0 +1,14 @@
+Metadata-Version: 2.2
+Name: cloudpilot
+Version: 1.0.0
+Summary: CloudPilot - AI-Driven Infrastructure Optimization
+Author: Your Name
+Requires-Dist: boto3
+Requires-Dist: kubernetes
+Requires-Dist: torch
+Requires-Dist: scikit-learn
+Requires-Dist: PyYAML
+Requires-Dist: prometheus-api-client
+Dynamic: author
+Dynamic: requires-dist
+Dynamic: summary

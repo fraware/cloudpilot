@@ -1,21 +1,32 @@
+from __future__ import annotations
+
 import argparse
+import logging
 import sys
-from cloudpilot.scaling import recommend_scaling
+from importlib.metadata import PackageNotFoundError, version
+
 from cloudpilot.cost_optimizer import get_aws_cost_optimization
 from cloudpilot.k8s_autotuner import tune_deployment
+from cloudpilot.scaling import recommend_scaling
 
-VERSION = "1.0.0"
+try:
+    _VERSION = version("cloudpilot")
+except PackageNotFoundError:
+    _VERSION = "0.0.0-dev"
 
 
-def main():
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
     parser = argparse.ArgumentParser(
         description="CloudPilot CLI Utility - AI-Driven Infrastructure Optimization"
     )
-    parser.add_argument("--version", action="version", version=f"CloudPilot {VERSION}")
+    parser.add_argument("--version", action="version", version=f"CloudPilot {_VERSION}")
 
     subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
 
-    # Scaling command
     parser_scale = subparsers.add_parser(
         "scale", help="Get scaling recommendation using the RL-based model."
     )
@@ -50,7 +61,6 @@ def main():
         help="Normalized user demand between 0 and 1 (e.g., 0.9).",
     )
 
-    # Cost optimization command
     parser_cost = subparsers.add_parser(
         "cost", help="Get cost optimization recommendation for an AWS instance type."
     )
@@ -61,7 +71,6 @@ def main():
         help="Current AWS instance type (default: m5.large).",
     )
 
-    # Kubernetes auto-tuning command
     parser_tune = subparsers.add_parser(
         "tune", help="Auto-tune a Kubernetes deployment and check for anomalies."
     )
@@ -81,7 +90,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "scale":
-        if not (0 <= args.demand <= 1):
+        if not 0 <= args.demand <= 1:
             sys.exit("Error: --demand must be between 0 and 1.")
         recommendation = recommend_scaling(
             args.cpu, args.mem, args.req, args.latency, args.demand

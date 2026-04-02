@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 from cli import main
 

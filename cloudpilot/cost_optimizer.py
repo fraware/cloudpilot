@@ -1,18 +1,22 @@
+from __future__ import annotations
+
+import logging
+
 import boto3
 
+from cloudpilot.config import load_settings
 
-def get_aws_cost_optimization(current_instance_type):
-    """
-    Retrieves pricing data for the current AWS instance type and provides
-    a simple recommendation for cost optimization.
+logger = logging.getLogger(__name__)
 
-    For MVP:
-      - Query AWS Pricing API for current instance pricing in US East (N. Virginia).
-      - Suggest comparing against baseline instance types.
+
+def get_aws_cost_optimization(current_instance_type: str) -> str:
     """
+    Query AWS Pricing API for the instance type and return a short recommendation.
+    """
+    region = load_settings().aws_pricing_region
     try:
-        pricing = boto3.client("pricing", region_name="us-east-1")
-        response = pricing.get_products(
+        pricing = boto3.client("pricing", region_name=region)
+        pricing.get_products(
             ServiceCode="AmazonEC2",
             Filters=[
                 {
@@ -32,12 +36,10 @@ def get_aws_cost_optimization(current_instance_type):
             ],
             MaxResults=1,
         )
-        # Note: For a production system, you would parse response['PriceList'] (a JSON string)
-        # to extract the actual hourly price. Here we simply notify the user that data was retrieved.
-        recommendation = (
+        return (
             f"Retrieved pricing data for {current_instance_type}. "
             f"Consider comparing with alternatives (e.g., m5.large) for cost savings."
         )
-        return recommendation
     except Exception as e:
+        logger.debug("AWS pricing error: %s", e)
         return f"Error retrieving pricing data: {str(e)}"

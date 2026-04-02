@@ -1,22 +1,26 @@
+from __future__ import annotations
+
+import logging
+
 from kubernetes import client, config
+
 from cloudpilot.anomaly_detector import (
     detect_anomaly,
     get_prometheus_metrics,
     self_heal,
 )
+from cloudpilot.config import load_settings
+
+logger = logging.getLogger(__name__)
 
 
-def tune_deployment(deployment_name, namespace="default"):
+def tune_deployment(deployment_name: str, namespace: str = "default") -> str:
     """
-    Connects to a Kubernetes cluster and applies auto-tuning recommendations
-    to a deployment's resource limits based on heuristics.
-
-    For MVP:
-      - If a container's CPU limit is above 500m, reduce it by 10%.
-      - Apply changes by patching the deployment.
+    Auto-tune deployment CPU limits (heuristic): reduce limit by 10% if above 500m.
+    Respects CLOUDPILOT_K8S_DRY_RUN=1 to log changes without patching.
     """
+    settings = load_settings()
     try:
-        # Load kubeconfig (assumes you have a valid kubeconfig in ~/.kube/config)
         config.load_kube_config()
         apps_v1 = client.AppsV1Api()
         deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
@@ -29,58 +33,55 @@ def tune_deployment(deployment_name, namespace="default"):
                 and "cpu" in container.resources.limits
             ):
                 current_cpu = container.resources.limits["cpu"]
-                # Handle CPU value in millicores (e.g., "600m")
                 if isinstance(current_cpu, str) and current_cpu.endswith("m"):
                     current_cpu_val = int(current_cpu.rstrip("m"))
                     if current_cpu_val > 500:
                         new_cpu_val = int(current_cpu_val * 0.9)
                         container.resources.limits["cpu"] = f"{new_cpu_val}m"
-                        # Optionally adjust requests as well
                         if (
                             container.resources.requests
                             and "cpu" in container.resources.requests
                         ):
                             container.resources.requests["cpu"] = f"{new_cpu_val}m"
                         modified = True
-                        print(
-                            f"Adjusted container '{container.name}' CPU limit from {current_cpu} to {new_cpu_val}m"
+                        logger.info(
+                            "Adjusted container '%s' CPU limit from %s to %sm",
+                            container.name,
+                            current_cpu,
+                            new_cpu_val,
                         )
 
-        if modified:
-            # Patch the deployment with updated resource settings
-            apps_v1.patch_namespaced_deployment(deployment_name, namespace, deployment)
-            return "Deployment tuned successfully."
-        else:
-            return "No adjustments made. Deployment resources are within desired thresholds."
+        if not modified:
+            return (
+                "No adjustments made. Deployment resources are within "
+                "desired thresholds."
+            )
+        if settings.k8s_dry_run:
+            return (
+                "Dry run: would patch deployment with updated CPU limits "
+                "(CLOUDPILOT_K8S_DRY_RUN=1)."
+            )
+        apps_v1.patch_namespaced_deployment(deployment_name, namespace, deployment)
+        return "Deployment tuned successfully."
     except Exception as e:
         return f"Error tuning deployment: {str(e)}"
 
 
-def tune_and_monitor(deployment_name, namespace="default"):
-    """
-    Extends tune_deployment by integrating anomaly detection and self-healing.
-
-    1. Tunes the deployment using heuristics.
-    2. Fetches current metrics via Prometheus.
-    3. Detects anomalies using an IsolationForest-based model.
-    4. If an anomaly is detected, triggers self-healing procedures.
-
-    Returns a summary of actions taken.
-    """
-    # Perform the auto-tuning
+def tune_and_monitor(deployment_name: str, namespace: str = "default") -> str:
     tune_result = tune_deployment(deployment_name, namespace)
-    print("Tuning Result:", tune_result)
+    logger.info("Tuning result: %s", tune_result)
 
-    # Fetch current metrics and detect anomalies
     metrics = get_prometheus_metrics()
-    print(
-        f"Current Metrics: CPU: {metrics[0]}, Memory: {metrics[1]}, "
-        f"Request Rate: {metrics[2]}, Latency: {metrics[3]}"
+    logger.info(
+        "Current metrics: CPU: %s, Memory: %s, Request Rate: %s, Latency: %s",
+        metrics[0],
+        metrics[1],
+        metrics[2],
+        metrics[3],
     )
 
     if detect_anomaly(metrics):
-        print("Anomaly detected. Initiating self-healing procedures...")
+        logger.warning("Anomaly detected. Initiating self-healing procedures...")
         heal_result = self_heal(namespace)
         return f"Tuning complete. Anomaly detected and healed: {heal_result}"
-    else:
-        return "Tuning complete. No anomalies detected."
+    return "Tuning complete. No anomalies detected."

@@ -1,6 +1,0 @@
-boto3
-kubernetes
-torch
-scikit-learn
-PyYAML
-prometheus-api-client

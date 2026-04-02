@@ -1,4 +1,3 @@
-import pytest
 from cloudpilot.scaling import recommend_scaling
 
 

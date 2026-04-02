@@ -1,100 +1,69 @@
-import numpy as np
-import time
+from __future__ import annotations
+
 import logging
+import time
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
-logging.basicConfig(level=logging.INFO)
-
-
-def get_intensity_from_pattern(pattern, base_intensity):
-    """
-    Adjusts the base intensity based on the given traffic pattern.
-
-    Args:
-        pattern (str): Traffic pattern (e.g., 'peak', 'offpeak', 'normal').
-        base_intensity (float): Base average rate (requests per second).
-
-    Returns:
-        float: Adjusted intensity.
-    """
+def get_intensity_from_pattern(pattern: str, base_intensity: float) -> float:
     pattern = pattern.lower()
     if pattern == "peak":
         return base_intensity * 1.5
-    elif pattern == "offpeak":
+    if pattern == "offpeak":
         return base_intensity * 0.7
-    else:
-        return base_intensity
+    return base_intensity
 
 
-def simulate_workload(duration, intensity, pattern="normal"):
-    """
-    Simulates realistic workload patterns using a Poisson process.
-
-    Args:
-        duration (int): Duration of the simulation in seconds.
-        intensity (float): Base average rate (lambda) for requests per second.
-        pattern (str): Traffic pattern modifier (e.g., 'peak', 'offpeak', 'normal').
-
-    Returns:
-        list: Sorted list of simulated request timestamps (in seconds).
-    """
+def simulate_workload(
+    duration: int, intensity: float, pattern: str = "normal"
+) -> list[float]:
     if duration < 0:
         raise ValueError("Duration must be non-negative")
     if intensity < 0:
         raise ValueError("Intensity must be non-negative")
 
     adjusted_intensity = get_intensity_from_pattern(pattern, intensity)
-    logging.info(
-        f"Simulating workload for {duration} seconds with intensity: {adjusted_intensity} req/sec (pattern: {pattern})."
+    logger.info(
+        "Simulating workload for %s seconds with intensity: %s req/sec (pattern: %s).",
+        duration,
+        adjusted_intensity,
+        pattern,
     )
-    events = []
+    events: list[float] = []
 
-    # For each second, sample the number of events based on a Poisson process.
     for second in range(duration):
         num_events = np.random.poisson(adjusted_intensity)
         for _ in range(num_events):
-            # Distribute events randomly within the second.
             event_time = second + np.random.random()
-            events.append(event_time)
+            events.append(float(event_time))
 
     events.sort()
-
-    # For demonstration, log each simulated request timestamp.
     for event in events:
-        logging.info(f"Simulated request at t = {event:.2f} sec")
-
+        logger.info("Simulated request at t = %.2f sec", event)
     return events
 
 
-def stress_test(kubernetes_deployment, namespace="default", duration=30):
-    """
-    Simulates infrastructure stress testing on a Kubernetes deployment.
-
-    This function demonstrates a stress test by logging periodic status updates.
-    In production, you might integrate a tool like 'stress-ng' via a sidecar container,
-    or execute stress commands in your pods.
-
-    Args:
-        kubernetes_deployment (str): The name of the Kubernetes deployment.
-        namespace (str): The Kubernetes namespace.
-        duration (int): Duration of the stress test in seconds.
-
-    Returns:
-        str: A summary of the stress test outcome.
-    """
+def stress_test(
+    kubernetes_deployment: str, namespace: str = "default", duration: int = 30
+) -> str:
     if duration < 0:
         raise ValueError("Duration must be non-negative")
 
-    logging.info(
-        f"Starting stress test on deployment '{kubernetes_deployment}' in namespace '{namespace}' for {duration} seconds."
+    logger.info(
+        "Starting stress test on deployment '%s' in namespace '%s' for %s seconds.",
+        kubernetes_deployment,
+        namespace,
+        duration,
     )
     start_time = time.time()
     while time.time() - start_time < duration:
-        logging.info("Simulating stress: applying CPU/memory load...")
-        # In a real scenario, you would trigger actual load generators or use stress tools.
-        time.sleep(5)  # Sleep to simulate time between stress events.
+        logger.info("Simulating stress: applying CPU/memory load...")
+        time.sleep(5)
 
-    logging.info(f"Stress test on deployment '{kubernetes_deployment}' completed.")
+    logger.info("Stress test on deployment '%s' completed.", kubernetes_deployment)
     return (
         f"Stress test on deployment '{kubernetes_deployment}' completed successfully."
     )

@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cloudpilot"
+version = "1.0.0"
+description = "CloudPilot - AI-Driven Infrastructure Optimization"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Mateo Petel" }]
+dependencies = [
+    "boto3>=1.34",
+    "kubernetes>=28.0",
+    "scikit-learn>=1.3",
+    "numpy>=1.24",
+    "PyYAML>=6.0",
+    "prometheus-api-client>=0.5",
+]
+
+[project.optional-dependencies]
+ml = ["torch>=2.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.3",
+    "mypy>=1.8",
+    "pip-audit>=2.6",
+    "bandit[toml]>=1.7",
+    "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+cloudpilot = "cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cloudpilot*"]
+
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.setuptools.package-data]
+cloudpilot = ["py.typed"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+src = ["cloudpilot", "cli.py", "tests", "locustfile.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"locustfile.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.10"
+packages = ["cloudpilot"]
+warn_unused_ignores = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = ["build/", "locustfile.py"]
+
+[[tool.mypy.overrides]]
+module = "cli"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: tests that may require real cluster or credentials (opt-in)",
+    "requires_torch: tests that need the optional torch dependency",
+]
+
+[tool.coverage.run]
+source = ["cloudpilot", "cli"]
+branch = true
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+fail_under = 45
+show_missing = true
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "build", ".venv"]
+skips = ["B101"]

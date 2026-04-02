@@ -1,146 +1,140 @@
-import time
+from __future__ import annotations
+
 import logging
+import threading
+import time
+
 import numpy as np
+from kubernetes import client, config
+from prometheus_api_client import PrometheusConnect
 from sklearn.ensemble import IsolationForest
 
-# Prometheus client for fetching metrics
-from prometheus_api_client import PrometheusConnect
+from cloudpilot.config import load_settings
 
-# Kubernetes client for self-healing actions
-from kubernetes import client, config
+logger = logging.getLogger(__name__)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+_model_lock = threading.Lock()
+_isolation_forest_model: IsolationForest | None = None
 
 
-def train_dummy_isolation_forest():
-    """
-    Train a dummy IsolationForest model using synthetic data.
-    In production, you would train on historical metrics.
-    """
-    # Simulate training data: 100 samples, 4 features (CPU, Memory, Request Rate, Latency)
-    X_train = np.random.rand(100, 4) * 100  # scale values for demonstration
-    model = IsolationForest(contamination=0.1, random_state=42)
-    model.fit(X_train)
+def train_dummy_isolation_forest(random_state: int = 42) -> IsolationForest:
+    """Train a dummy IsolationForest on synthetic data (for demos and tests)."""
+    rng = np.random.default_rng(random_state)
+    x_train = rng.random((100, 4)) * 100
+    model = IsolationForest(contamination=0.1, random_state=random_state)
+    model.fit(x_train)
     return model
 
 
-# Train the model at module load time (for MVP purposes)
-isolation_forest_model = train_dummy_isolation_forest()
+def get_isolation_forest_model() -> IsolationForest:
+    """Lazily construct the default IsolationForest (not at import time)."""
+    global _isolation_forest_model
+    if _isolation_forest_model is None:
+        with _model_lock:
+            if _isolation_forest_model is None:
+                _isolation_forest_model = train_dummy_isolation_forest()
+    return _isolation_forest_model
 
 
-def get_prometheus_metrics():
+def reset_isolation_forest_model_for_testing() -> None:
+    """Clear cached model (tests only)."""
+    global _isolation_forest_model
+    with _model_lock:
+        _isolation_forest_model = None
+
+
+def get_prometheus_metrics() -> list[float]:
     """
-    Fetch metrics from Prometheus.
-    For demonstration, this function returns a feature vector:
-      [cpu_util, mem_util, request_rate, network_latency]
-
-    Replace the queries with those relevant to your environment.
+    Fetch metrics from Prometheus into
+    [cpu_util, mem_util, request_rate, network_latency].
     """
+    settings = load_settings()
     try:
-        prom = PrometheusConnect(url="http://localhost:9090", disable_ssl=True)
-
-        # Example queries – adjust as needed.
-        # Here we assume Prometheus is collecting container CPU and memory usage.
+        prom = PrometheusConnect(
+            url=settings.prometheus_url,
+            disable_ssl=settings.prometheus_disable_ssl,
+        )
         cpu_query = "avg(rate(container_cpu_usage_seconds_total[1m])) * 100"
-        mem_query = "avg(container_memory_usage_bytes) / 1e6"  # in MB
-
+        mem_query = "avg(container_memory_usage_bytes) / 1e6"
         cpu_data = prom.custom_query(query=cpu_query)
         mem_data = prom.custom_query(query=mem_query)
-
-        # For simplicity, take the first result value or use default if empty.
         cpu_util = float(cpu_data[0]["value"][1]) if cpu_data else 50.0
         mem_util = float(mem_data[0]["value"][1]) if mem_data else 50.0
-
-        # For request rate and latency, we use dummy normalized values.
-        request_rate = 70.0  # e.g., average requests per second (or a normalized score)
-        network_latency = 100.0  # in milliseconds
-
+        request_rate = 70.0
+        network_latency = 100.0
         return [cpu_util, mem_util, request_rate, network_latency]
     except Exception as e:
-        logging.error(f"Error fetching Prometheus metrics: {e}")
-        # Return default/fallback metrics
+        logger.error("Error fetching Prometheus metrics: %s", e)
         return [50.0, 50.0, 70.0, 100.0]
 
 
-def detect_anomaly(feature_vector, model=None):
-    """
-    Uses an IsolationForest to detect if the given feature vector is anomalous.
-
-    Args:
-        feature_vector (list or np.array): [cpu_util, mem_util, request_rate, network_latency]
-        model: Pre-trained IsolationForest model (default uses module-level model).
-
-    Returns:
-        bool: True if an anomaly is detected, False otherwise.
-    """
+def detect_anomaly(
+    feature_vector: list[float] | np.ndarray,
+    model: IsolationForest | None = None,
+) -> bool:
     if model is None:
-        model = isolation_forest_model
+        model = get_isolation_forest_model()
     prediction = model.predict([feature_vector])
-    # IsolationForest returns -1 for anomalies, 1 for normal.
     is_anomaly = prediction[0] == -1
     if is_anomaly:
-        logging.warning(f"Anomaly detected for metrics: {feature_vector}")
-    # Cast to built-in bool to ensure proper type.
+        logger.warning("Anomaly detected for metrics: %s", feature_vector)
     return bool(is_anomaly)
 
 
-def self_heal(namespace="default"):
+def self_heal(namespace: str = "default") -> str:
     """
-    Self-healing mechanism: Restart failing pods in the given namespace.
+    Restarts pods not in Running phase by deleting them (controllers recreate).
 
-    This function loads the Kubernetes configuration, identifies pods not in
-    the 'Running' phase, and deletes them so that their controllers restart them.
-
-    Returns:
-        str: Summary of healing actions taken.
+    Requires CLOUDPILOT_SELF_HEAL_CONFIRM=1 (or true/yes) to perform deletes.
     """
+    settings = load_settings()
+    if not settings.self_heal_confirm:
+        return (
+            "Self-heal skipped: set CLOUDPILOT_SELF_HEAL_CONFIRM=1 to allow "
+            "deleting non-Running pods."
+        )
     try:
         config.load_kube_config()
         core_api = client.CoreV1Api()
         pods = core_api.list_namespaced_pod(namespace)
-        healed_pods = []
+        healed_pods: list[str] = []
         for pod in pods.items:
             if pod.status.phase != "Running":
                 pod_name = pod.metadata.name
                 core_api.delete_namespaced_pod(name=pod_name, namespace=namespace)
                 healed_pods.append(pod_name)
-                logging.info(f"Restarted pod: {pod_name}")
+                logger.info("Restarted pod: %s", pod_name)
         if healed_pods:
             return f"Restarted pods: {', '.join(healed_pods)}"
-        else:
-            logging.info("No failing pods found for self-healing.")
-            return "No failing pods found. Consider auto-scaling if anomaly persists."
+        logger.info("No failing pods found for self-healing.")
+        return "No failing pods found. Consider auto-scaling if anomaly persists."
     except Exception as e:
-        logging.error(f"Error during self-healing: {e}")
+        logger.error("Error during self-healing: %s", e)
         return f"Error during self-healing: {e}"
 
 
-def monitor_and_heal(check_interval=60, namespace="default"):
-    """
-    Continuously monitors system metrics using Prometheus and applies self-healing
-    actions if an anomaly is detected. This function can run as a separate process.
-
-    Args:
-        check_interval (int): Seconds between metric checks.
-        namespace (str): Kubernetes namespace to monitor and heal.
-    """
+def monitor_and_heal(check_interval: int = 60, namespace: str = "default") -> None:
     while True:
         features = get_prometheus_metrics()
-        logging.info(
-            f"Current metrics: CPU: {features[0]:.2f}, Memory: {features[1]:.2f}, "
-            f"Request Rate: {features[2]:.2f}, Latency: {features[3]:.2f}"
+        logger.info(
+            (
+                "Current metrics: CPU: %.2f, Memory: %.2f, "
+                "Request Rate: %.2f, Latency: %.2f"
+            ),
+            features[0],
+            features[1],
+            features[2],
+            features[3],
         )
         if detect_anomaly(features):
-            logging.warning("Initiating self-healing procedures...")
+            logger.warning("Initiating self-healing procedures...")
             result = self_heal(namespace)
-            logging.info(f"Self-healing result: {result}")
+            logger.info("Self-healing result: %s", result)
         else:
-            logging.info("No anomalies detected.")
+            logger.info("No anomalies detected.")
         time.sleep(check_interval)
 
 
-# Example usage:
 if __name__ == "__main__":
-    # This will run an infinite loop to monitor and heal; for testing, you might set check_interval to a small value.
+    logging.basicConfig(level=logging.INFO)
     monitor_and_heal(check_interval=30)

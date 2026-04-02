@@ -1,6 +1,15 @@
-boto3
-kubernetes
-torch
-scikit-learn
-PyYAML
-prometheus-api-client
+# CloudPilot — dependency installation
+#
+# This file does not pin packages. Install from pyproject.toml:
+#
+#   Runtime + optional PyTorch (scaling model inference):
+#     pip install -e ".[ml]"
+#
+#   Development (tests, Ruff, Mypy, Bandit, pip-audit) + ML extra:
+#     pip install -e ".[dev,ml]" --extra-index-url https://download.pytorch.org/whl/cpu
+#
+# The CPU PyTorch index is optional; omit it if you use CUDA wheels from PyPI or another index.
+#
+# Reproducible resolves:
+#   - uv:   uv sync --all-extras   (uses uv.lock when present)
+#   - pip:  use pip-tools or manual constraints; see README.md

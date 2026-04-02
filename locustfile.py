@@ -1,6 +1,7 @@
 import time
-from locust import User, task, between
+
 from cloudpilot.load_tester import simulate_workload
+from locust import User, between, task
 
 
 class LoadTestUser(User):
